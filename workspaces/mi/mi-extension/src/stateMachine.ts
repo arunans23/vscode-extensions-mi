@@ -388,6 +388,13 @@ const stateMachine = createMachine<MachineContext>({
         waitForLS: (context, event) => {
             // replace this with actual promise that waits for LS to be ready
             return new Promise(async (resolve, reject) => {
+                // Pre-warm: create the webview panel in the background while the language server
+                // initialises. The 86 MB JS bundle parses in parallel, so by the time the LS is
+                // ready the React app is already mounted. preserveFocus=true keeps editor focus.
+                if (context.projectUri && !webviews.has(context.projectUri)) {
+                    const preWarmPanel = new VisualizerWebview(MACHINE_VIEW.Overview, context.projectUri, false, true);
+                    webviews.set(context.projectUri, preWarmPanel);
+                }
                 console.log("Waiting for LS to be ready " + new Date().toLocaleTimeString());
                 try {
                     vscode.commands.executeCommand(`${MI_PROJECT_EXPLORER_VIEW_ID}.focus`);

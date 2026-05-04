@@ -40,10 +40,10 @@ export class VisualizerWebview {
     private beside: boolean;
     private projectUri: string;
 
-    constructor(view: MACHINE_VIEW, projectUri: string, beside: boolean = false) {
+    constructor(view: MACHINE_VIEW, projectUri: string, beside: boolean = false, preserveFocus: boolean = false) {
         this.projectUri = projectUri;
         this.beside = beside;
-        this._panel = this.createWebview(view, beside);
+        this._panel = this.createWebview(view, beside, preserveFocus);
         this._panel.onDidDispose(async () => await this.dispose(), null, this._disposables);
         this._panel.webview.html = this.getWebviewContent(this._panel.webview);
         RPCLayer.create(this._panel, projectUri);
@@ -58,7 +58,7 @@ export class VisualizerWebview {
         });
     }
 
-    private createWebview(view: MACHINE_VIEW, beside: boolean): vscode.WebviewPanel {
+    private createWebview(view: MACHINE_VIEW, beside: boolean, preserveFocus: boolean = false): vscode.WebviewPanel {
         let title: string = view ?? 'Design View';
         const workspaces = vscode.workspace.workspaceFolders;
         const projectName = workspaces && workspaces.length > 1 ? path.basename(this.projectUri) : '';
@@ -68,7 +68,7 @@ export class VisualizerWebview {
         const panel = vscode.window.createWebviewPanel(
             VisualizerWebview.viewType,
             title,
-            beside ? ViewColumn.Beside : ViewColumn.Active,
+            { viewColumn: beside ? ViewColumn.Beside : ViewColumn.Active, preserveFocus },
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
