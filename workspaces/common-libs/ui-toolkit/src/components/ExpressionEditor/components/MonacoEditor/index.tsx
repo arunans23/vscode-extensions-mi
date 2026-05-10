@@ -258,7 +258,8 @@ export const MonacoEditor = forwardRef<MonacoEditorHandle, MonacoEditorProps>(({
             } else {
                 // No placeholders, set cursor to end
                 const currentText = isSelected ? currentSelection : currentValue;
-                const text = currentText.endsWith('.') ? `${currentText}${functionSignature}` : `${currentText}.${functionSignature}`;
+                const text = !currentText ? functionSignature :
+                    currentText.endsWith('.') ? `${currentText}${functionSignature}` : `${currentText}.${functionSignature}`;
                 model.pushEditOperations(
                     [],
                     [{
