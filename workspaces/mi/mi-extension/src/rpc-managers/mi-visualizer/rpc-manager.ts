@@ -98,6 +98,7 @@ import { downloadJavaFromMI, downloadMI, getProjectSetupDetails, getSupportedMIV
 import { extractCAppDependenciesAsProjects, loadCAppResources } from "../../visualizer/activate";
 import { findMultiModuleProjectsInWorkspaceDir } from "../../util/migrationUtils";
 import { MILanguageClient } from "../../lang-client/activator";
+import { perfStart, perfEnd } from "../../util/perf";
 import { reorderModulesByBuildOrder } from "../../debugger/pomResolver";
 import { buildDeployExtraArgs, executeRemoteDeployTask } from "../../debugger/debugHelper";
 import { MIAIPanelRpcManager } from "./../../rpc-managers/ai-features/rpc-manager";
@@ -154,17 +155,21 @@ export class MiVisualizerRpcManager implements MIVisualizerAPI {
 
     async getProjectStructure(params: ProjectStructureRequest): Promise<ProjectStructureResponse> {
         return new Promise(async (resolve) => {
+            perfStart('RPC getProjectStructure (LS)');
             const langClient = await MILanguageClient.getInstance(this.projectUri);
 
             const res = await langClient.getProjectStructure(this.projectUri);
+            perfEnd('RPC getProjectStructure (LS)');
             resolve(res);
         });
     }
 
     async getProjectDetails(): Promise<ProjectDetailsResponse> {
         return new Promise(async (resolve) => {
+            perfStart('RPC getProjectDetails (LS)');
             const langClient = await MILanguageClient.getInstance(this.projectUri);
             const res = await langClient.getProjectDetails();
+            perfEnd('RPC getProjectDetails (LS)');
             resolve(res);
         });
     }
@@ -851,8 +856,10 @@ export class MiVisualizerRpcManager implements MIVisualizerAPI {
     }
     async getProjectOverview(params: ProjectStructureRequest): Promise<ProjectOverviewResponse> {
         return new Promise(async (resolve) => {
+            perfStart('RPC getProjectOverview (LS getOverviewModel)');
             const langClient = await MILanguageClient.getInstance(this.projectUri);
             const res = await langClient.getOverviewModel();
+            perfEnd('RPC getProjectOverview (LS getOverviewModel)');
             resolve(res);
         });
     }

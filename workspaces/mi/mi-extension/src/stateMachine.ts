@@ -21,6 +21,7 @@ import { COMMANDS, MI_PROJECT_EXPLORER_VIEW_ID, WI_EXTENSION_ID, RUNTIME_VERSION
 import { activateProjectExplorer } from './project-explorer/activate';
 import { MockService, STNode, UnitTest, Task, InboundEndpoint } from '../../syntax-tree/lib/src';
 import { log, logDebug } from './util/logger';
+import { perfStart, perfEnd } from './util/perf';
 import { deriveConfigName, getSources } from './util/dataMapper';
 import { fileURLToPath } from 'url';
 import path = require('path');
@@ -407,6 +408,7 @@ const stateMachine = createMachine<MachineContext>({
             return new Promise(async (resolve, reject) => {
                 console.log("Waiting for LS to be ready " + new Date().toLocaleTimeString());
                 try {
+                    perfStart('waitForLS (language server startup)');
                     // Create the webview panel now so its JS bundle loads in parallel
                     // with the language-server startup; openWebPanel later waits on the
                     // ready latch before advancing the machine.
@@ -416,6 +418,7 @@ const stateMachine = createMachine<MachineContext>({
                     vscode.commands.executeCommand(`${MI_PROJECT_EXPLORER_VIEW_ID}.focus`);
                     const ls = await MILanguageClient.getInstance(context.projectUri!);
                     vscode.commands.executeCommand('setContext', 'MI.status', 'projectLoaded');
+                    perfEnd('waitForLS (language server startup)');
 
                     resolve(ls);
                     console.log("LS is ready " + new Date().toLocaleTimeString());
@@ -705,6 +708,7 @@ function createWebviewPanelWithReadyLatch(context: { projectUri?: string | null,
         return;
     }
     const projectUri = context.projectUri;
+    perfStart('webview create → webviewReady (bundle load/parse)');
     const panel = new VisualizerWebview(context.view!, projectUri, extension.webviewReveal);
     webviews.set(projectUri, panel);
 
@@ -712,6 +716,7 @@ function createWebviewPanelWithReadyLatch(context: { projectUri?: string | null,
     if (messenger) {
         webviewReadyLatches.set(projectUri, new Promise((resolve) => {
             messenger.onNotification(webviewReady, () => {
+                perfEnd('webview create → webviewReady (bundle load/parse)');
                 resolve(true);
             });
         }));
@@ -868,6 +873,7 @@ function updateProjectExplorer(location: VisualizerLocation | undefined) {
 }
 
 async function checkIfMiProject(projectUri: string, view: MACHINE_VIEW = MACHINE_VIEW.Overview) {
+    perfStart(`checkIfMiProject (${path.basename(projectUri)})`);
     console.log(`Detecting project in ${projectUri} - ${new Date().toLocaleTimeString()}`);
 
     let isProject = false, isOldProject = false, isOldWorkspace = false, displayOverview = true, isEnvironmentSetUp = false, isLegacyRuntime = true;
@@ -940,7 +946,9 @@ async function checkIfMiProject(projectUri: string, view: MACHINE_VIEW = MACHINE
     }
 
     if (isProject || isOldProject) {
+        perfStart(`setupEnvironment (${path.basename(projectUri)})`);
         isEnvironmentSetUp = await setupEnvironment(projectUri, isOldProject);
+        perfEnd(`setupEnvironment (${path.basename(projectUri)})`);
         if (!isEnvironmentSetUp) {
             vscode.commands.executeCommand('setContext', 'MI.status', 'notSetUp');
         }
@@ -948,6 +956,7 @@ async function checkIfMiProject(projectUri: string, view: MACHINE_VIEW = MACHINE
         console.log(`Current workspace path: ${projectUri}`);
     }
 
+    perfEnd(`checkIfMiProject (${path.basename(projectUri)})`);
     console.log(`Project detection completed for path: ${projectUri} at ${new Date().toLocaleTimeString()}`);
     return {
         isProject,

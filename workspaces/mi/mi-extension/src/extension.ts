@@ -37,10 +37,12 @@ import { COMMANDS, WI_EXTENSION_ID } from './constants';
 import { enableLS } from './util/workspace';
 import { disposeMIAgentPanelRpcManager } from './rpc-managers/agent-mode/rpc-handler';
 import { isConsolidatedProject } from './util/onboardingUtils';
+import { perfMark, perfStart, perfEnd } from './util/perf';
 const os = require('os');
 const fs = require('fs');
 
 export async function activate(context: vscode.ExtensionContext) {
+	perfStart('activate()');
 	extension.context = context;
 
 	// TODO: Remove when VSCode fixes: https://github.com/microsoft/vscode/issues/188257
@@ -50,11 +52,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	vscode.window.tabGroups.close(orphanedTabs);
 
 	if (workspace.workspaceFolders) {
+		perfStart('activate: replaceWithSubProjects');
 		for (const folder of workspace.workspaceFolders) {
 			await replaceWithSubProjects(folder);
 		}
+		perfEnd('activate: replaceWithSubProjects');
 	}
 
+	perfStart('activate: old-project detection');
 	const oldProjects = workspace.workspaceFolders
 		? (await Promise.all(
 			workspace.workspaceFolders.map(async folder => {
@@ -67,6 +72,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	const newProjects = workspace.workspaceFolders
 		? workspace.workspaceFolders.filter(folder => !oldProjects.includes(folder))
 		: [];
+	perfEnd('activate: old-project detection');
 
 	const firstProject = newProjects?.[0]?.uri?.fsPath || 
 						 oldProjects?.[0]?.uri?.fsPath || 
@@ -93,8 +99,11 @@ export async function activate(context: vscode.ExtensionContext) {
 		// refresh project explorer
 		vscode.commands.executeCommand(COMMANDS.REFRESH_COMMAND);
 	});
+	perfStart('activate: StateMachineAI.initialize');
 	StateMachineAI.initialize();
+	perfEnd('activate: StateMachineAI.initialize');
 
+	perfStart('activate: register sub-activators');
 	activateUriHandlers();
 	activateHistory();
 
@@ -103,10 +112,13 @@ export async function activate(context: vscode.ExtensionContext) {
 	activateRuntimeService(context, firstProject);
 	activateVisualizer(context, firstProject);
 	activateAiPanel(context);
+	perfEnd('activate: register sub-activators');
 
 	workspace.workspaceFolders?.forEach(folder => {
 		context.subscriptions.push(...enableLS());
 	});
+	perfEnd('activate()');
+	perfMark('activate() returned (state machine continues async)');
 }
 
 export async function deactivate(): Promise<void> {

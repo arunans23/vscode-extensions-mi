@@ -50,6 +50,7 @@ import { FormattingProvider } from './FormattingProvider';
 
 import util = require('util');
 import { log } from '../util/logger';
+import { perfStart, perfEnd } from '../util/perf';
 import { getJavaHomeFromConfig, getJavaVersion, getMIVersionFromPom, isMISetup, isJavaSetup } from '../util/onboardingUtils';
 import { SELECTED_SERVER_PATH } from '../debugger/constants';
 import { extension } from '../MIExtensionContext';
@@ -222,22 +223,28 @@ export class MILanguageClient {
             // Only the runtime version is needed here — the full getProjectSetupDetails
             // probe (java -version spawn, MI path resolution, update check) already ran
             // in setupEnvironment and costs 250ms+ per call.
+            perfStart('LS launch: getMIVersionFromPom');
             const miVersionFromPom = await getMIVersionFromPom(projectUri);
+            perfEnd('LS launch: getMIVersionFromPom');
             if (!miVersionFromPom) {
                 const errorMessage = `Runtime version not found in the pom file of project ${projectUri}. Please add the runtime version and reload to continue.`;
                 window.showErrorMessage(errorMessage);
                 this.updateErrors(ERRORS.MISSING_MI_RUNTIME_VERSION);
                 throw new Error(errorMessage);
             }
+            perfStart('LS launch: java/MI setup checks');
             await isJavaSetup(projectUri, miVersionFromPom);
             await isMISetup(projectUri, miVersionFromPom);
+            perfEnd('LS launch: java/MI setup checks');
             const versions: string[] = ["4.0.0", "4.1.0", "4.2.0", "4.3.0"];
             const config = vscode.workspace.getConfiguration('MI', vscode.Uri.file(projectUri));
             await config.update("LEGACY_EXPRESSION_ENABLED", miVersionFromPom && versions.includes(miVersionFromPom),
                 vscode.ConfigurationTarget.WorkspaceFolder);
             const JAVA_HOME = getJavaHomeFromConfig(this.projectUri);
             if (JAVA_HOME) {
+                perfStart('LS launch: checkJDKCompatibility (java -version spawn)');
                 const isJDKCompatible = await this.checkJDKCompatibility(JAVA_HOME);
+                perfEnd('LS launch: checkJDKCompatibility (java -version spawn)');
                 if (!isJDKCompatible) {
                     const errorMessage = `Incompatible JDK version detected. Please install JDK ${this.COMPATIBLE_JDK_VERSION} or above.`;
                     window.showErrorMessage(errorMessage);
@@ -339,9 +346,15 @@ export class MILanguageClient {
                 // Create the language client and start the client.
                 this.languageClient = new ExtendedLanguageClient('synapseXML', 'Synapse Language Server', this.projectUri,
                     serverOptions, clientOptions);
+                perfStart('LS launch: languageClient.start (JVM spawn + LSP init)');
                 await this.languageClient.start();
+                perfEnd('LS launch: languageClient.start (JVM spawn + LSP init)');
+                perfStart('LS launch: updateConnectorDependencies');
                 await this.languageClient?.updateConnectorDependencies();
+                perfEnd('LS launch: updateConnectorDependencies');
+                perfStart('LS launch: loadCAppResources');
                 await loadCAppResources(this.projectUri, this.languageClient!);
+                perfEnd('LS launch: loadCAppResources');
 
                 //Setup autoCloseTags
                 let tagProvider: (document: TextDocument, position: Position) => Thenable<AutoCloseResult> = (document: TextDocument, position: Position) => {

@@ -30,6 +30,7 @@ import { SetPathRequest, PathDetailsResponse, SetupDetails } from '@wso2/mi-core
 import { parseStringPromise } from 'xml2js';
 import { LATEST_CAR_PLUGIN_VERSION } from './templates';
 import { runCommand, runBasicCommand } from '../test-explorer/runner';
+import { perfStart, perfEnd } from './perf';
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
 
 const AdmZip = require('adm-zip');
@@ -86,6 +87,7 @@ function promptServerUpdateInBackground(projectUri: string): void {
 
 export async function setupEnvironment(projectUri: string, isOldProject: boolean): Promise<boolean> {
     try {
+        perfStart('setupEnvironment: maven wrapper + config files');
         const wrapperFiles = await vscode.workspace.findFiles(
             new vscode.RelativePattern(projectUri, '{mvnw,mvnw.cmd}'),
             '**/node_modules/**',
@@ -100,16 +102,25 @@ export async function setupEnvironment(projectUri: string, isOldProject: boolean
             }
             setupConfigFiles(projectUri);
         }
+        perfEnd('setupEnvironment: maven wrapper + config files');
+        perfStart('setupEnvironment: getProjectSetupDetails');
         const { miVersionFromPom } = await getProjectSetupDetails(projectUri, { skipUpdateCheck: true });
+        perfEnd('setupEnvironment: getProjectSetupDetails');
         if (!miVersionFromPom) {
             return false;
         }
         const versions: string[] = ["4.0.0", "4.1.0", "4.2.0", "4.3.0"];
         const config = vscode.workspace.getConfiguration('MI', vscode.Uri.file(projectUri));
+        perfStart('setupEnvironment: LEGACY_EXPRESSION_ENABLED config.update');
         await config.update("LEGACY_EXPRESSION_ENABLED", miVersionFromPom && versions.includes(miVersionFromPom),
             vscode.ConfigurationTarget.WorkspaceFolder);
+        perfEnd('setupEnvironment: LEGACY_EXPRESSION_ENABLED config.update');
+        perfStart('setupEnvironment: isMISetup');
         const isMISet = await isMISetup(projectUri, miVersionFromPom);
+        perfEnd('setupEnvironment: isMISetup');
+        perfStart('setupEnvironment: isJavaSetup');
         const isJavaSet = await isJavaSetup(projectUri, miVersionFromPom);
+        perfEnd('setupEnvironment: isJavaSetup');
 
         if (isMISet && isJavaSet) {
             // A server update was accepted from the deferred background prompt and the
@@ -118,7 +129,9 @@ export async function setupEnvironment(projectUri: string, isOldProject: boolean
                 pendingServerUpdates.delete(projectUri);
                 return false;
             }
+            perfStart('setupEnvironment: updateCarPluginVersion');
             await updateCarPluginVersion(projectUri);
+            perfEnd('setupEnvironment: updateCarPluginVersion');
             const config = vscode.workspace.getConfiguration('MI', vscode.Uri.parse(projectUri));
             const currentState = config.inspect<string>("useLocalMaven");
             if (currentState?.workspaceFolderValue === undefined) {
@@ -155,7 +168,9 @@ export async function isMIUpToDate(): Promise<boolean> {
 }
 
 export async function getProjectSetupDetails(projectUri: string, options?: { skipUpdateCheck?: boolean }): Promise<SetupDetails> {
+    perfStart('getProjectSetupDetails: getMIVersionFromPom (pom parse)');
     const miVersion = await getMIVersionFromPom(projectUri);
+    perfEnd('getProjectSetupDetails: getMIVersionFromPom (pom parse)');
     if (!miVersion) {
         vscode.window.showWarningMessage('Failed to get WSO2 Integrator: MI version from pom.xml.');
         return { miVersionStatus: 'missing', javaDetails: { status: 'not-valid' }, miDetails: { status: 'not-valid' } };
@@ -731,6 +746,7 @@ async function getJavaAndMIPathsFromWorkspace(projectUri: string, projectMiVersi
     if (projectMiVersion) {
         const config = vscode.workspace.getConfiguration('MI', vscode.Uri.file(projectUri));
 
+        perfStart('getJavaAndMIPaths: java resolution (getJavaVersion spawnSync)');
         const javaHome = config.get<string>(SELECTED_JAVA_HOME);
         const validJavaHome = javaHome && verifyJavaHomePath(javaHome) ||
             getJavaFromGlobalOrEnv(projectMiVersion) ||
@@ -743,6 +759,8 @@ async function getJavaAndMIPathsFromWorkspace(projectUri: string, projectMiVersi
                 response.javaDetails = { status: "mismatch", path: validJavaHome, version: javaVersion! };
             }
         }
+        perfEnd('getJavaAndMIPaths: java resolution (getJavaVersion spawnSync)');
+        perfStart('getJavaAndMIPaths: MI path resolution (isMIUpToDate network for 4.4.0)');
         const serverPath = config.get<string>(SELECTED_SERVER_PATH);
         const validServerPath = serverPath && verifyMIPath(serverPath) ||
             getMIFromGlobal(projectMiVersion) ||
@@ -763,6 +781,7 @@ async function getJavaAndMIPathsFromWorkspace(projectUri: string, projectMiVersi
                 response.miDetails = { status: "mismatch", path: validServerPath, version: miVersion! };
             }
         }
+        perfEnd('getJavaAndMIPaths: MI path resolution (isMIUpToDate network for 4.4.0)');
     }
 
     return response;
